@@ -1,0 +1,6 @@
+{
+  "name": "VICTNOW Perfumes",
+  "description": "VICTNOW luxury perfume e-commerce store designed for business leaders. Experience the Presence of Leadership.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

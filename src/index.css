@@ -1,0 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cinzel", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Custom brand colors matching executive palettes */
+  --color-gold-50: #fbf7eb;
+  --color-gold-100: #f5edd3;
+  --color-gold-200: #ebd8a7;
+  --color-gold-300: #debfa9;
+  --color-gold-400: #cca56c;
+  --color-gold-500: #b89154;
+  --color-gold-600: #9e7740;
+  --color-gold-700: #7f5d31;
+  --color-gold-800: #614624;
+  --color-gold-900: #453119;
+}
+
+/* Base style overrides for a premium feeling */
+html {
+  scroll-behavior: smooth;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+body {
+  background-color: #0b0c0e;
+  color: #f3f4f6;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0b0c0e;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b89154;
+}
+
+/* Luxury card gloss effect */
+.luxury-glass {
+  background: rgba(18, 20, 24, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.luxury-glass-light {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+/* Elegant gold gradient text */
+.text-gold-gradient {
+  background: linear-gradient(135deg, #f5edd3 0%, #b89154 50%, #7f5d31 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Soft gold glow */
+.shadow-gold-glow {
+  box-shadow: 0 0 25px rgba(184, 145, 84, 0.15);
+}
+
+/* Shimmer animation for luxury gold buttons */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.shimmer-btn::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.15) 20%,
+    rgba(255, 255, 255, 0.3) 60%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: shimmer 3s infinite;
+  content: '';
+}
+
