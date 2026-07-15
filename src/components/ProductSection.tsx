@@ -5,11 +5,12 @@ import { PERFUMES } from '../data';
 import { Perfume } from '../types';
 
 interface ProductSectionProps {
+  products?: Perfume[];
   onAddToCart: (perfumeId: 'muse' | 'nexus' | 'forge', size: '50 ML' | '100 ML') => void;
   onSelectForGifting: (perfumeId: 'muse' | 'nexus' | 'forge') => void;
 }
 
-export default function ProductSection({ onAddToCart, onSelectForGifting }: ProductSectionProps) {
+export default function ProductSection({ products = PERFUMES, onAddToCart, onSelectForGifting }: ProductSectionProps) {
   const [activeFilter, setActiveFilter] = useState<'all' | 'women' | 'unisex' | 'men'>('all');
   const [selectedPerfume, setSelectedPerfume] = useState<Perfume | null>(null);
   const [hoveredNoteIndex, setHoveredNoteIndex] = useState<string | null>(null);
@@ -20,7 +21,7 @@ export default function ProductSection({ onAddToCart, onSelectForGifting }: Prod
     forge: '100 ML'
   });
 
-  const filteredPerfumes = PERFUMES.filter((p) => {
+  const filteredPerfumes = products.filter((p) => {
     if (activeFilter === 'all') return true;
     return p.type === activeFilter;
   });
@@ -89,10 +90,16 @@ export default function ProductSection({ onAddToCart, onSelectForGifting }: Prod
                 <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-1 bg-[#0b0c0e]/90 backdrop-blur-md border border-white/10 text-neutral-100 font-extrabold">
                   {perfume.type === 'women' ? 'FOR WOMEN' : perfume.type === 'men' ? 'FOR MEN' : 'UNISEX'}
                 </span>
-                <span className="font-mono text-[8px] uppercase tracking-widest px-2.5 py-1 bg-gold-950/60 border border-gold-500/40 text-gold-200 flex items-center space-x-1 font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-gold-400 animate-pulse" />
-                  <span>LTD ED</span>
-                </span>
+                {perfume.isLimitedEdition !== false ? (
+                  <span className="font-mono text-[8px] uppercase tracking-widest px-2.5 py-1 bg-gold-950/60 border border-gold-500/40 text-gold-200 flex items-center space-x-1 font-bold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-gold-400 animate-pulse" />
+                    <span>LTD ED</span>
+                  </span>
+                ) : (
+                  <span className="font-mono text-[8px] uppercase tracking-widest px-2.5 py-1 bg-neutral-900 border border-neutral-700 text-neutral-400 flex items-center space-x-1 font-bold">
+                    <span>CLASSIC</span>
+                  </span>
+                )}
               </div>
 
               {/* Image Container with Luxury Zoom Hover */}
@@ -129,7 +136,7 @@ export default function ProductSection({ onAddToCart, onSelectForGifting }: Prod
                     {perfume.name}
                   </h3>
                   <span className="font-mono text-sm text-gold-200 font-extrabold">
-                    ${cardSizes[perfume.id] === '100 ML' ? 295 : 185}
+                    ₹{cardSizes[perfume.id] === '100 ML' ? Math.round(perfume.price * 1.6) : perfume.price}
                   </span>
                 </div>
 
@@ -177,19 +184,13 @@ export default function ProductSection({ onAddToCart, onSelectForGifting }: Prod
                 </div>
 
                 {/* Card Action footer (visible on mobile / backup for hover) */}
-                <div className="mt-auto pt-6 border-t border-white/5 grid grid-cols-2 gap-4">
+                <div className="mt-auto pt-6 border-t border-white/5 w-full">
                   <button
                     onClick={() => onAddToCart(perfume.id, cardSizes[perfume.id])}
-                    className="py-3 bg-gold-500 hover:bg-gold-400 text-neutral-950 font-sans text-[9px] uppercase tracking-wider font-extrabold transition-colors cursor-pointer flex items-center justify-center space-x-1.5 shadow-md"
+                    className="w-full py-3 bg-gold-500 hover:bg-gold-400 text-neutral-950 font-sans text-[9px] uppercase tracking-wider font-extrabold transition-colors cursor-pointer flex items-center justify-center space-x-1.5 shadow-md"
                   >
                     <ShoppingBag className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Add {cardSizes[perfume.id]}</span>
-                  </button>
-                  <button
-                    onClick={() => { setSelectedSize(cardSizes[perfume.id]); setSelectedPerfume(perfume); }}
-                    className="py-3 bg-neutral-900 hover:bg-neutral-800 text-white border-2 border-white/40 font-sans text-[9px] uppercase tracking-wider font-bold transition-colors cursor-pointer flex items-center justify-center"
-                  >
-                    <span>Notes & Details</span>
                   </button>
                 </div>
               </div>
@@ -253,7 +254,7 @@ export default function ProductSection({ onAddToCart, onSelectForGifting }: Prod
                   </div>
                   <div className="text-left md:text-right">
                     <span className="font-mono text-xl text-white block font-extrabold">
-                      ${selectedSize === '100 ML' ? 295 : 185}
+                      ₹{selectedSize === '100 ML' ? Math.round(selectedPerfume.price * 1.6) : selectedPerfume.price}
                     </span>
                     <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-400 font-extrabold">
                       {selectedSize} / {selectedPerfume.concentration}
@@ -283,7 +284,7 @@ export default function ProductSection({ onAddToCart, onSelectForGifting }: Prod
                             : 'border-white/10 text-neutral-300 bg-neutral-900/60 hover:bg-neutral-800'
                         }`}
                       >
-                        {size} — ${size === '100 ML' ? '295' : '185'}
+                        {size} — ₹{size === '100 ML' ? Math.round(selectedPerfume.price * 1.6) : selectedPerfume.price}
                       </button>
                     ))}
                   </div>
@@ -394,24 +395,15 @@ export default function ProductSection({ onAddToCart, onSelectForGifting }: Prod
               </div>
 
               {/* Action Drawer Footer */}
-              <div className="pt-8 border-t border-white/5 grid grid-cols-2 gap-4 mt-8">
+              <div className="pt-8 border-t border-white/5 w-full mt-8">
                 <button
                   onClick={() => {
                     onAddToCart(selectedPerfume.id, selectedSize);
                     setSelectedPerfume(null);
                   }}
-                  className="w-full py-4 bg-gradient-to-r from-gold-600 to-gold-500 text-neutral-900 font-sans text-xs uppercase tracking-widest font-bold hover:brightness-110 cursor-pointer"
+                  className="w-full py-4 bg-gradient-to-r from-gold-600 to-gold-500 text-neutral-900 font-sans text-xs uppercase tracking-widest font-bold hover:brightness-110 cursor-pointer text-center"
                 >
                   Add Standard {selectedSize}
-                </button>
-                <button
-                  onClick={() => {
-                    onSelectForGifting(selectedPerfume.id);
-                    setSelectedPerfume(null);
-                  }}
-                  className="w-full py-4 bg-transparent border border-white/20 hover:border-gold-400 text-white font-sans text-xs uppercase tracking-widest font-medium hover:bg-white/5 cursor-pointer"
-                >
-                  Personalize Bottle
                 </button>
               </div>
 

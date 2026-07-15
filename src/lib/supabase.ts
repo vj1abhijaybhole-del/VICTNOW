@@ -32,6 +32,96 @@ export async function saveUserProfile(email: string, mobile: string, name?: stri
   }
 }
 
+// Helper to authenticate (login) a user via email and password
+export async function loginUser(email: string, password: string) {
+  try {
+    console.log('Authenticating client with server for:', email);
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, password })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Authentication failed');
+    }
+    
+    const result = await response.json();
+    return { data: result.user, error: null };
+  } catch (err: any) {
+    console.error('loginUser exception in client helper:', err);
+    return { data: null, error: err.message };
+  }
+}
+
+// Helper to check if an email already exists
+export async function checkEmailExists(email: string) {
+  try {
+    const response = await fetch('/api/auth/check-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email })
+    });
+    if (!response.ok) {
+      throw new Error('Check email failed');
+    }
+    const result = await response.json();
+    return result.exists;
+  } catch (err) {
+    console.error('checkEmailExists error:', err);
+    return false;
+  }
+}
+
+// Helper to register a new user with email, password, mobile and optional name
+export async function registerUser(email: string, password: string, mobile: string, name?: string) {
+  try {
+    console.log('Registering client with server for:', email);
+    const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, password, mobile, name })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Registration failed');
+    }
+    
+    const result = await response.json();
+    return { data: result.user, error: null };
+  } catch (err: any) {
+    console.error('registerUser exception in client helper:', err);
+    return { data: null, error: err.message };
+  }
+}
+
+// Helper to fetch user activities (orders and customized gifting requests)
+export async function fetchUserActivities(email: string) {
+  try {
+    console.log('Fetching activities from server for:', email);
+    const response = await fetch(`/api/profiles/${encodeURIComponent(email)}/activities`);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to fetch user activities');
+    }
+    
+    const result = await response.json();
+    return { orders: result.orders || [], giftingRequests: result.giftingRequests || [], error: null };
+  } catch (err: any) {
+    console.error('fetchUserActivities exception in client helper:', err);
+    return { orders: [], giftingRequests: [], error: err.message };
+  }
+}
+
 // Helper to insert an order
 export async function saveOrder(orderData: {
   customer_name: string;
@@ -102,5 +192,64 @@ export async function saveGiftingRequest(requestData: {
   } catch (err: any) {
     console.error('gifting_requests exception in client helper:', err);
     return { data: null, error: err };
+  }
+}
+
+// Helper to fetch all dynamic products from the database
+export async function fetchProducts() {
+  try {
+    const response = await fetch('/api/products');
+    if (!response.ok) {
+      throw new Error('Failed to fetch dynamic products catalog');
+    }
+    const result = await response.json();
+    if (result.success && result.data && result.data.length > 0) {
+      // Map keys from Postgres snake_case into React camelCase structures
+      const mapped = result.data.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        tagline: p.tagline,
+        price: Number(p.price),
+        size: p.size,
+        edition: p.edition,
+        imageUrl: p.image_url,
+        description: p.description,
+        concentration: p.concentration,
+        longevity: p.longevity,
+        sillage: p.sillage,
+        notes: typeof p.notes === 'string' ? JSON.parse(p.notes) : p.notes,
+        character: typeof p.character === 'string' ? JSON.parse(p.character) : p.character,
+        isLimitedEdition: p.is_limited_edition !== undefined ? p.is_limited_edition : true
+      }));
+      return { data: mapped, error: null };
+    }
+    return { data: null, error: 'Database table is empty' };
+  } catch (err: any) {
+    console.error('fetchProducts client exception:', err);
+    return { data: null, error: err.message || err };
+  }
+}
+
+// Helper to request a private VIP reserve invitation
+export async function submitInvitationRequest(email: string) {
+  try {
+    const response = await fetch('/api/invitations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email })
+    });
+    
+    if (!response.ok) {
+      const errBody = await response.json().catch(() => ({}));
+      throw new Error(errBody.error || 'Failed to request invitation');
+    }
+    const result = await response.json();
+    return { data: result.data, error: null };
+  } catch (err: any) {
+    console.error('submitInvitationRequest client exception:', err);
+    return { data: null, error: err.message || err };
   }
 }

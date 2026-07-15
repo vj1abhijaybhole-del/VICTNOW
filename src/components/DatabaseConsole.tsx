@@ -6,11 +6,12 @@ import SupabaseDiagnostic from './SupabaseDiagnostic';
 interface DatabaseConsoleProps {
   isOpen: boolean;
   onClose: () => void;
+  onDataMutated?: () => void;
 }
 
-type TabType = 'profiles' | 'orders' | 'gifting_requests' | 'diagnostics';
+type TabType = 'profiles' | 'orders' | 'gifting_requests' | 'products' | 'invitations' | 'diagnostics' | 'credentials';
 
-export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProps) {
+export default function DatabaseConsole({ isOpen, onClose, onDataMutated }: DatabaseConsoleProps) {
   const [activeTab, setActiveTab] = useState<TabType>('profiles');
   const [status, setStatus] = useState<'checking' | 'connected' | 'error'>('checking');
   const [dbTime, setDbTime] = useState<string>('');
@@ -18,6 +19,14 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
   const [loading, setLoading] = useState<boolean>(false);
   const [data, setData] = useState<any[]>([]);
   const [clearing, setClearing] = useState<string | null>(null);
+
+  // Dynamic Product Editor States
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [editImageUrl, setEditImageUrl] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editPrice, setEditPrice] = useState<number>(0);
+  const [editIsLimitedEdition, setEditIsLimitedEdition] = useState(true);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
 
   // Authentication State
   const [authToken, setAuthToken] = useState<string | null>(() => {
@@ -27,6 +36,14 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [loginError, setLoginError] = useState<string>('');
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+
+  // Change Credentials State
+  const [newUsername, setNewUsername] = useState<string>('');
+  const [newPassword, setNewPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
+  const [credentialsError, setCredentialsError] = useState<string>('');
+  const [credentialsSuccess, setCredentialsSuccess] = useState<string>('');
+  const [isSavingCredentials, setIsSavingCredentials] = useState<boolean>(false);
 
   const handleLogout = () => {
     setAuthToken(null);
@@ -61,6 +78,56 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
       setLoginError(err.message || 'Login request failed. Server offline?');
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  const handleChangeCredentialsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCredentialsError('');
+    setCredentialsSuccess('');
+
+    if (newPassword !== confirmPassword) {
+      setCredentialsError('Passwords do not match');
+      return;
+    }
+
+    if (!newUsername.trim() || !newPassword.trim()) {
+      setCredentialsError('Username and password cannot be empty');
+      return;
+    }
+
+    setIsSavingCredentials(true);
+    try {
+      const res = await fetch('/api/admin/change-credentials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          username: newUsername,
+          password: newPassword
+        })
+      });
+
+      if (res.status === 401) {
+        handleLogout();
+        return;
+      }
+
+      if (res.ok) {
+        setCredentialsSuccess('Admin credentials updated successfully!');
+        setNewUsername('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setCredentialsError(body.error || 'Failed to update credentials');
+      }
+    } catch (err: any) {
+      setCredentialsError(err.message || 'Request failed');
+    } finally {
+      setIsSavingCredentials(false);
     }
   };
 
@@ -154,10 +221,66 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
     }
   };
 
+  // Initialize edit form controls
+  const startEditing = (product: any) => {
+    setEditingProduct(product);
+    setEditImageUrl(product.image_url || '');
+    setEditDescription(product.description || '');
+    setEditPrice(Number(product.price) || 0);
+    setEditIsLimitedEdition(product.is_limited_edition !== false);
+  };
+
+  // Submit product modifications to Postgres
+  const saveProductEdits = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+    setIsSavingProduct(true);
+    try {
+      const response = await fetch(`/api/admin/products/${editingProduct.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          image_url: editImageUrl,
+          description: editDescription,
+          price: editPrice,
+          is_limited_edition: editIsLimitedEdition
+        })
+      });
+      if (response.ok) {
+        alert('Product details updated successfully in Postgres!');
+        setEditingProduct(null);
+        fetchTableData('products');
+        if (onDataMutated) {
+          onDataMutated();
+        }
+      } else {
+        const body = await response.json().catch(() => ({}));
+        alert(body.error || 'Failed to update product details');
+      }
+    } catch (err: any) {
+      alert(`Request failed: ${err.message}`);
+    } finally {
+      setIsSavingProduct(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      const storedToken = localStorage.getItem('admin_session_token');
+      if (storedToken !== authToken) {
+        setAuthToken(storedToken);
+      }
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     if (isOpen) {
       checkStatus();
-      if (authToken && activeTab !== 'diagnostics') {
+      setEditingProduct(null); // Clear editing state on switching tabs
+      if (authToken && activeTab !== 'diagnostics' && activeTab !== 'credentials') {
         fetchTableData(activeTab);
       }
     }
@@ -282,10 +405,7 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
                   SUPABASE: db.qfabhexouufjeyipxoes.supabase.co
                 </p>
                 <div className="p-3 bg-amber-500/5 rounded-xl border border-amber-500/10 text-left text-[11px] text-gray-400 leading-relaxed font-sans">
-                  💡 <span className="font-semibold text-amber-300">Developer Note:</span> Use configured <span className="font-mono bg-black/30 px-1 py-0.5 rounded text-white">ADMIN_USERNAME</span> and <span className="font-mono bg-black/30 px-1 py-0.5 rounded text-white">ADMIN_PASSWORD</span>.
-                  <div className="mt-1.5 pt-1.5 border-t border-white/5 text-2xs text-gray-500">
-                    Default credentials: <span className="font-mono text-gray-300">admin</span> / <span className="font-mono text-gray-300">adminpassword</span>
-                  </div>
+                  💡 <span className="font-semibold text-amber-300">Developer Security:</span> This console requires a valid administrator session. Credentials can be managed securely inside your server environment settings or via the database credentials tab once authorized.
                 </div>
               </div>
             </motion.div>
@@ -404,6 +524,36 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
             </button>
 
             <button
+              onClick={() => setActiveTab('products')}
+              className={`flex-1 md:flex-none flex items-center space-x-2.5 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left whitespace-nowrap ${
+                activeTab === 'products'
+                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/25'
+                  : 'bg-transparent text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+              }`}
+            >
+              <Terminal className="w-4 h-4 shrink-0" />
+              <div className="flex-1">
+                <div>products</div>
+                <div className="text-[10px] text-gray-500 font-normal">Bespoke fragrance catalog</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('invitations')}
+              className={`flex-1 md:flex-none flex items-center space-x-2.5 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left whitespace-nowrap ${
+                activeTab === 'invitations'
+                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/25'
+                  : 'bg-transparent text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+              }`}
+            >
+              <Terminal className="w-4 h-4 shrink-0" />
+              <div className="flex-1">
+                <div>invitations</div>
+                <div className="text-[10px] text-gray-500 font-normal">VIP reserve lists</div>
+              </div>
+            </button>
+
+            <button
               onClick={() => setActiveTab('diagnostics')}
               className={`flex-1 md:flex-none flex items-center space-x-2.5 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left whitespace-nowrap ${
                 activeTab === 'diagnostics'
@@ -415,6 +565,21 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
               <div className="flex-1">
                 <div>Connection Health</div>
                 <div className="text-[10px] text-gray-500 font-normal">Supabase Service Diagnostics</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('credentials')}
+              className={`flex-1 md:flex-none flex items-center space-x-2.5 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left whitespace-nowrap ${
+                activeTab === 'credentials'
+                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/25'
+                  : 'bg-transparent text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+              }`}
+            >
+              <Lock className="w-4 h-4 shrink-0 text-amber-400" />
+              <div className="flex-1">
+                <div>Change Credentials</div>
+                <div className="text-[10px] text-gray-500 font-normal">Admin Username & Password</div>
               </div>
             </button>
 
@@ -436,6 +601,86 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
             {activeTab === 'diagnostics' ? (
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 <SupabaseDiagnostic authToken={authToken} onUnauthorized={handleLogout} />
+              </div>
+            ) : activeTab === 'credentials' ? (
+              <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center bg-[#0e0f12]">
+                <motion.div 
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="w-full max-w-md p-8 bg-[#16171b] border border-white/10 rounded-2xl shadow-xl space-y-6"
+                >
+                  <div className="text-center space-y-2">
+                    <div className="mx-auto w-12 h-12 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20 flex items-center justify-center">
+                      <Lock className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-semibold tracking-wide text-white">Change Admin Credentials</h3>
+                    <p className="text-xs text-gray-400">Update your credentials stored on the server for the admin database console.</p>
+                  </div>
+
+                  {credentialsError && (
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/25 rounded-xl flex items-center space-x-2 text-rose-400 text-xs font-mono">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{credentialsError}</span>
+                    </div>
+                  )}
+
+                  {credentialsSuccess && (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex items-center space-x-2 text-emerald-400 text-xs font-mono">
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                      <span>{credentialsSuccess}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleChangeCredentialsSubmit} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-wider font-mono text-gray-400 font-semibold block">New Username</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. secure_admin"
+                        value={newUsername}
+                        onChange={(e) => setNewUsername(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50 transition-all font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-wider font-mono text-gray-400 font-semibold block">New Password</label>
+                      <input
+                        type="password"
+                        required
+                        placeholder="••••••••"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50 transition-all font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-wider font-mono text-gray-400 font-semibold block">Confirm New Password</label>
+                      <input
+                        type="password"
+                        required
+                        placeholder="••••••••"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50 transition-all font-mono"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSavingCredentials}
+                      className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-500/50 text-black text-xs font-bold uppercase tracking-wider rounded-xl transition-all font-mono cursor-pointer flex items-center justify-center space-x-2 shadow-lg shadow-amber-500/10 active:scale-[0.98] disabled:cursor-not-allowed"
+                    >
+                      {isSavingCredentials ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <span>Save New Credentials</span>
+                      )}
+                    </button>
+                  </form>
+                </motion.div>
               </div>
             ) : (
               <>
@@ -477,6 +722,134 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
                   <RefreshCw className="w-8 h-8 text-amber-400 animate-spin" />
                   <p className="text-xs text-gray-400 font-mono">Querying PostgreSQL table schema public.{activeTab}...</p>
                 </div>
+              ) : activeTab === 'products' ? (
+                /* Products Custom View */
+                editingProduct ? (
+                  /* Editing Product Form Overlay */
+                  <form onSubmit={saveProductEdits} className="max-w-lg mx-auto bg-[#16171b] border border-white/10 rounded-2xl p-6 space-y-4">
+                    <h4 className="font-serif text-base text-amber-300 tracking-wide font-extrabold uppercase border-b border-white/5 pb-2">
+                      Edit Product: {editingProduct.id.toUpperCase()}
+                    </h4>
+                    
+                    <div className="space-y-1 text-left">
+                      <label className="text-[10px] uppercase tracking-wider font-mono text-gray-400 font-bold block text-left">Image URL</label>
+                      <input
+                        type="url"
+                        required
+                        value={editImageUrl}
+                        onChange={(e) => setEditImageUrl(e.target.value)}
+                        className="w-full px-4 py-2 bg-neutral-900 border border-white/10 rounded-xl text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1 text-left">
+                      <label className="text-[10px] uppercase tracking-wider font-mono text-gray-400 font-bold block text-left">Description</label>
+                      <textarea
+                        required
+                        rows={4}
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className="w-full px-4 py-2 bg-neutral-900 border border-white/10 rounded-xl text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 font-sans leading-relaxed text-left"
+                      />
+                    </div>
+
+                    <div className="space-y-1 text-left">
+                      <label className="text-[10px] uppercase tracking-wider font-mono text-gray-400 font-bold block text-left">Price (INR)</label>
+                      <input
+                        type="number"
+                        required
+                        value={editPrice}
+                        onChange={(e) => setEditPrice(Number(e.target.value))}
+                        className="w-full px-4 py-2 bg-neutral-900 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500/50 font-mono"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-black/20 border border-white/5 rounded-xl">
+                      <div className="text-left">
+                        <span className="text-xs font-semibold text-white block">Limited Edition Status</span>
+                        <span className="text-[10px] text-gray-400 font-mono">Toggles "LTD ED" versus "CLASSIC" pill</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditIsLimitedEdition(!editIsLimitedEdition)}
+                        className={`px-4 py-1.5 font-mono text-[10px] font-extrabold uppercase tracking-wider transition-all border rounded-lg cursor-pointer ${
+                          editIsLimitedEdition
+                            ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                            : 'bg-neutral-800 border-neutral-700 text-neutral-400'
+                        }`}
+                      >
+                        {editIsLimitedEdition ? 'LTD ED Enabled' : 'Disabled (Classic)'}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-end space-x-3 pt-4 border-t border-white/5">
+                      <button
+                        type="button"
+                        onClick={() => setEditingProduct(null)}
+                        className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-semibold text-gray-300 transition-all cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingProduct}
+                        className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-lg active:scale-95 disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSavingProduct ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </form>
+                ) : data.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto space-y-4">
+                    <div className="p-4 bg-white/5 text-gray-500 rounded-full border border-white/5">
+                      <Database className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-300">No products found inside public.products</h4>
+                      <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                        Database table is empty or connection error.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  /* Products grid list */
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {data.map((product) => (
+                      <div key={product.id} className="bg-[#16171b] border border-white/10 rounded-2xl overflow-hidden p-4 flex flex-col space-y-3 relative">
+                        {/* Limited pill indicator */}
+                        <div className="absolute top-3 right-3">
+                          {product.is_limited_edition !== false ? (
+                            <span className="px-2 py-0.5 text-[8px] bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded font-mono uppercase tracking-widest">
+                              Limited Edition
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 text-[8px] bg-neutral-800 text-neutral-400 border border-neutral-700 rounded font-mono uppercase tracking-widest">
+                              Classic
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="aspect-[3/2] rounded-xl overflow-hidden bg-neutral-950 flex items-center justify-center border border-white/5">
+                          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        </div>
+
+                        <div className="text-left space-y-1 flex-1">
+                          <h4 className="text-sm font-serif font-extrabold tracking-wider text-white uppercase">{product.name}</h4>
+                          <p className="text-[10px] text-amber-400/80 font-mono tracking-widest uppercase">{product.tagline}</p>
+                          <p className="text-xs text-emerald-400 font-bold font-mono">₹{product.price}</p>
+                          <p className="text-[11px] text-gray-400 line-clamp-3 leading-relaxed font-sans">{product.description}</p>
+                        </div>
+
+                        <button
+                          onClick={() => startEditing(product)}
+                          className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs rounded-xl transition-colors cursor-pointer font-bold tracking-wider"
+                        >
+                          Edit Content
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )
               ) : data.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto space-y-4">
                   <div className="p-4 bg-white/5 text-gray-500 rounded-full border border-white/5">
@@ -517,6 +890,16 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
                         <div>3. Since you are logged in, it will instantly sync the suite customization details!</div>
                       </div>
                     )}
+                    {activeTab === 'invitations' && (
+                      <div className="mt-4 text-xs bg-[#16171b] p-3 rounded-lg border border-white/5 text-left text-gray-400 space-y-1.5">
+                        <div className="flex items-center text-amber-300 font-medium">
+                          <ArrowRight className="w-3.5 h-3.5 mr-1 text-amber-400" /> Let's request a VIP invitation:
+                        </div>
+                        <div>1. Scroll down to the footer subscription field.</div>
+                        <div>2. Type your corporate email address and hit the reserve key.</div>
+                        <div>3. Instantly watch the live sync generate a VIP Code in the invitations database!</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -555,6 +938,13 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
                             <th className="p-3">Timestamp</th>
                           </>
                         )}
+                        {activeTab === 'invitations' && (
+                          <>
+                            <th className="p-3">VIP Corporate Email</th>
+                            <th className="p-3">Assigned VIP Access Code</th>
+                            <th className="p-3">Requested Timestamp</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 font-mono">
@@ -591,7 +981,7 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
                                   {Array.isArray(row.items) ? row.items.length : 0}
                                 </span>
                               </td>
-                              <td className="p-3 text-emerald-400 font-bold">${Number(row.total_price).toLocaleString()}</td>
+                              <td className="p-3 text-emerald-400 font-bold">₹{Number(row.total_price).toLocaleString()}</td>
                               <td className="p-3 text-2xs uppercase tracking-wider">{row.payment_method}</td>
                               <td className="p-3 text-gray-500 text-[11px]">{new Date(row.created_at).toLocaleDateString()}</td>
                             </>
@@ -615,6 +1005,15 @@ export default function DatabaseConsole({ isOpen, onClose }: DatabaseConsoleProp
                                 {row.customer_phone && <div className="text-[10px] text-gray-500">{row.customer_phone}</div>}
                               </td>
                               <td className="p-3 text-gray-500 text-[11px]">{new Date(row.created_at).toLocaleDateString()}</td>
+                            </>
+                          )}
+
+                          {/* Invitations View */}
+                          {activeTab === 'invitations' && (
+                            <>
+                              <td className="p-3 text-white selection:bg-amber-400 font-sans">{row.email}</td>
+                              <td className="p-3 text-amber-400 font-bold tracking-wider">{row.vip_code}</td>
+                              <td className="p-3 text-gray-500 text-[11px]">{new Date(row.created_at).toLocaleDateString()} {new Date(row.created_at).toLocaleTimeString()}</td>
                             </>
                           )}
                         </tr>

@@ -19,6 +19,7 @@ export interface Perfume {
   concentration: string; // e.g., "Premium Parfum"
   longevity: string; // e.g., "12+ Hours"
   sillage: string; // e.g., "Intimate to Strong"
+  isLimitedEdition?: boolean;
 }
 
 export interface GiftingCustomization {

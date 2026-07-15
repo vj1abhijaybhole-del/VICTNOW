@@ -30,7 +30,7 @@ export default function CartDrawer({
 
   // If there are multiple items, let's sum them up
   const subtotal = standardSubtotal;
-  const standardShippingCost = subtotal > 300 ? 0 : 25; // free for orders over $300 (luxury shipping)
+  const standardShippingCost = 0; // Complimentary Delivery
   const total = subtotal + standardShippingCost;
 
   return (
@@ -119,7 +119,7 @@ export default function CartDrawer({
                               {perfume.name}
                             </h4>
                             <span className="font-mono text-sm text-gold-200 flex-shrink-0 font-extrabold">
-                              ${(item.unitPrice * item.quantity).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                              ₹{(item.unitPrice * item.quantity).toLocaleString(undefined, {minimumFractionDigits: 2})}
                             </span>
                           </div>
                           
@@ -209,32 +209,30 @@ export default function CartDrawer({
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between text-neutral-200 font-bold">
                       <span>Collection Subtotal</span>
-                      <span className="font-mono text-white font-extrabold">${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                      <span className="font-mono text-white font-extrabold">₹{subtotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                     </div>
                     <div className="flex items-center justify-between text-neutral-200 font-bold">
-                      <span>White-glove Insured Courier</span>
-                      <span className="font-mono text-white font-extrabold">
-                        {standardShippingCost === 0 ? 'COMPLIMENTARY' : `$${standardShippingCost.toFixed(2)}`}
+                      <span>Delivery</span>
+                      <span className="font-mono text-emerald-400 font-extrabold">
+                        FREE
                       </span>
                     </div>
                     
                     <div className="pt-3 border-t border-white/10 flex items-baseline justify-between">
                       <span className="font-serif text-sm text-white uppercase tracking-wider font-extrabold">Estimated Total</span>
                       <span className="font-mono text-lg text-gold-200 font-extrabold">
-                        ${total.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        ₹{total.toLocaleString(undefined, {minimumFractionDigits: 2})}
                       </span>
                     </div>
                   </div>
 
-                  {/* Free shipping banner if not reached */}
-                  {subtotal < 300 && (
-                    <div className="p-2.5 bg-gold-950/20 border border-gold-500/30 text-gold-300 text-[10px] text-left flex items-start space-x-2 font-bold shadow">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-gold-400" />
-                      <span>
-                        Add ${(300 - subtotal).toFixed(2)} more to unlock complimentary white-glove executive shipping.
-                      </span>
-                    </div>
-                  )}
+                  {/* Free shipping banner */}
+                  <div className="p-2.5 bg-emerald-950/20 border border-emerald-500/30 text-emerald-300 text-[10px] text-left flex items-start space-x-2 font-bold shadow">
+                    <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5 text-emerald-400" />
+                    <span>
+                      Complimentary premium delivery applied to your order.
+                    </span>
+                  </div>
 
                   {/* Secure Check notes */}
                   <div className="flex items-center justify-center space-x-1.5 text-[9px] text-neutral-200 font-mono tracking-widest pt-1 uppercase font-extrabold">

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Mail, Phone, User, Sparkles, ShieldCheck } from 'lucide-react';
+import { X, Mail, Phone, User, Sparkles, ShieldCheck, Lock } from 'lucide-react';
 import { User as UserType } from '../types';
-import { saveUserProfile } from '../lib/supabase';
+import { loginUser, registerUser } from '../lib/supabase';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -19,13 +19,15 @@ export default function LoginModal({
   title = "Authenticate Your Access",
   subtitle = "To reserve limited edition batches and custom formulations, please verify your details."
 }: LoginModalProps) {
+  const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
   const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
   const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -36,31 +38,59 @@ export default function LoginModal({
       return;
     }
 
-    // Mobile validation (simple: digits and some common characters like +, -, spaces)
-    const phoneCleaned = mobile.replace(/[^0-9+]/g, '');
-    if (phoneCleaned.length < 8) {
-      setError('Please provide a valid contact number (at least 8 digits).');
+    if (password.length < 4) {
+      setError('Please provide a security password (at least 4 characters).');
       return;
     }
 
     setIsSubmitting(true);
 
-    // Save profile to Supabase database
-    saveUserProfile(email, mobile, name.trim() || undefined);
+    try {
+      if (authMode === 'signin') {
+        // Sign In
+        const { data, error: authError } = await loginUser(email, password);
+        if (authError) {
+          setError(authError);
+          setIsSubmitting(false);
+          return;
+        }
+        if (data) {
+          setIsSubmitting(false);
+          onLoginSuccess(data);
+          setEmail('');
+          setPassword('');
+          onClose();
+        }
+      } else {
+        // Registration
+        const phoneCleaned = mobile.replace(/[^0-9+]/g, '');
+        if (phoneCleaned.length < 8) {
+          setError('Please provide a valid contact number (at least 8 digits).');
+          setIsSubmitting(false);
+          return;
+        }
 
-    // Simulate luxury verification
-    setTimeout(() => {
+        const { data, error: authError } = await registerUser(email, password, mobile, name.trim() || undefined);
+        if (authError) {
+          setError(authError);
+          setIsSubmitting(false);
+          return;
+        }
+        if (data) {
+          setIsSubmitting(false);
+          onLoginSuccess(data);
+          setEmail('');
+          setMobile('');
+          setName('');
+          setPassword('');
+          onClose();
+        }
+      }
+    } catch (err: any) {
+      console.error('Submit error:', err);
+      setError(err.message || 'An unexpected authentication error occurred.');
       setIsSubmitting(false);
-      onLoginSuccess({
-        email,
-        mobile,
-        name: name.trim() || undefined
-      });
-      setEmail('');
-      setMobile('');
-      setName('');
-      onClose();
-    }, 1000);
+    }
   };
 
   return (
@@ -107,30 +137,58 @@ export default function LoginModal({
               </div>
 
               <h3 className="font-serif text-2xl md:text-3xl text-white text-center tracking-wider font-extrabold mb-2" id="login-title">
-                {title}
+                {authMode === 'signin' ? "Client Sign In" : title}
               </h3>
-              <p className="text-neutral-300 text-xs text-center leading-relaxed font-sans font-medium mb-8 max-w-sm mx-auto">
-                {subtitle}
+              <p className="text-neutral-300 text-xs text-center leading-relaxed font-sans font-medium mb-6 max-w-sm mx-auto">
+                {authMode === 'signin' ? "Enter your registered client credentials to view priority access and order history." : subtitle}
               </p>
+
+              {/* Mode Selector Tabs */}
+              <div className="grid grid-cols-2 gap-2 p-1.5 bg-[#0b0c0e] border border-white/5 rounded-lg mb-6">
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode('signin'); setError(''); }}
+                  className={`py-2 text-2xs uppercase tracking-widest font-mono font-bold transition-all rounded-md ${
+                    authMode === 'signin'
+                      ? 'bg-gradient-to-r from-gold-600 to-gold-500 text-black shadow-lg'
+                      : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode('register'); setError(''); }}
+                  className={`py-2 text-2xs uppercase tracking-widest font-mono font-bold transition-all rounded-md ${
+                    authMode === 'register'
+                      ? 'bg-gradient-to-r from-gold-600 to-gold-500 text-black shadow-lg'
+                      : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  Register Account
+                </button>
+              </div>
 
               {/* Login Form */}
               <form onSubmit={handleSubmit} className="space-y-5">
-                {/* Optional Full Name */}
-                <div className="space-y-1.5">
-                  <label className="block font-mono text-[9px] uppercase tracking-widest text-neutral-400 font-extrabold">
-                    Full Name <span className="text-neutral-500 font-normal">(Optional)</span>
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g., Abhijay Bhole"
-                      className="w-full bg-[#16181d] border border-white/10 focus:border-gold-500/50 text-white pl-11 pr-4 py-3.5 text-xs font-sans placeholder-neutral-600 outline-none transition-all font-bold"
-                    />
+                {/* Optional Full Name - Only on register */}
+                {authMode === 'register' && (
+                  <div className="space-y-1.5">
+                    <label className="block font-mono text-[9px] uppercase tracking-widest text-neutral-400 font-extrabold">
+                      Full Name <span className="text-neutral-500 font-normal">(Optional)</span>
+                    </label>
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="e.g., Abhijay Bhole"
+                        className="w-full bg-[#16181d] border border-white/10 focus:border-gold-500/50 text-white pl-11 pr-4 py-3.5 text-xs font-sans placeholder-neutral-600 outline-none transition-all font-bold"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Email Address - Required */}
                 <div className="space-y-1.5">
@@ -150,19 +208,39 @@ export default function LoginModal({
                   </div>
                 </div>
 
-                {/* Mobile Number - Required */}
+                {/* Mobile Number - Required only on register */}
+                {authMode === 'register' && (
+                  <div className="space-y-1.5">
+                    <label className="block font-mono text-[9px] uppercase tracking-widest text-neutral-400 font-extrabold">
+                      Mobile Number <span className="text-gold-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                      <input
+                        required
+                        type="tel"
+                        value={mobile}
+                        onChange={(e) => setMobile(e.target.value)}
+                        placeholder="e.g., +91-8055854596"
+                        className="w-full bg-[#16181d] border border-white/10 focus:border-gold-500/50 text-white pl-11 pr-4 py-3.5 text-xs font-sans placeholder-neutral-600 outline-none transition-all font-bold"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Password - Required */}
                 <div className="space-y-1.5">
                   <label className="block font-mono text-[9px] uppercase tracking-widest text-neutral-400 font-extrabold">
-                    Mobile Number <span className="text-gold-500">*</span>
+                    Security Password <span className="text-gold-500">*</span>
                   </label>
                   <div className="relative">
-                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
                     <input
                       required
-                      type="tel"
-                      value={mobile}
-                      onChange={(e) => setMobile(e.target.value)}
-                      placeholder="e.g., +91-8055854596"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
                       className="w-full bg-[#16181d] border border-white/10 focus:border-gold-500/50 text-white pl-11 pr-4 py-3.5 text-xs font-sans placeholder-neutral-600 outline-none transition-all font-bold"
                     />
                   </div>
@@ -189,10 +267,10 @@ export default function LoginModal({
                   {isSubmitting ? (
                     <>
                       <div className="w-4 h-4 border-2 border-[#0b0c0e] border-t-transparent rounded-full animate-spin" />
-                      <span>Verifying Client Status...</span>
+                      <span>{authMode === 'signin' ? 'Verifying Client...' : 'Registering Client...'}</span>
                     </>
                   ) : (
-                    <span>Verify and Access Collection</span>
+                    <span>{authMode === 'signin' ? 'Verify and Access Suite' : 'Register and Access Suite'}</span>
                   )}
                 </button>
               </form>
@@ -201,7 +279,7 @@ export default function LoginModal({
               <div className="mt-8 pt-6 border-t border-white/5 flex items-start space-x-3 text-left">
                 <ShieldCheck className="w-4 h-4 text-gold-400 mt-0.5 flex-shrink-0" />
                 <p className="font-sans text-[10px] text-neutral-400 leading-relaxed font-semibold">
-                  By providing your corporate email and secure contact number, you gain direct priority placement on all production runs. No marketing spam. Real-time courier dispatch only.
+                  By providing your corporate email and secure contact number, you gain direct priority placement on all production runs. No marketing spam. Real-time delivery updates only.
                 </p>
               </div>
             </div>

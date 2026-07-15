@@ -7,9 +7,10 @@ import { GiftingCustomization, Perfume } from '../types';
 interface CorporateGiftingProps {
   initialPerfumeId?: 'muse' | 'nexus' | 'forge';
   onAddCustomizedToCart: (perfumeId: 'muse' | 'nexus' | 'forge', custom: GiftingCustomization) => void;
+  products?: Perfume[];
 }
 
-export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCustomizedToCart }: CorporateGiftingProps) {
+export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCustomizedToCart, products = PERFUMES }: CorporateGiftingProps) {
   // Current perfume being customized
   const [selectedPerfumeId, setSelectedPerfumeId] = useState<'muse' | 'nexus' | 'forge'>(initialPerfumeId);
   const [size, setSize] = useState<'50 ML' | '100 ML'>('100 ML');
@@ -22,7 +23,7 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
     if (scrollContainerRef.current && !isScrollingRef.current) {
       const container = scrollContainerRef.current;
       const children = container.children;
-      const activeIndex = PERFUMES.findIndex(p => p.id === selectedPerfumeId);
+      const activeIndex = products.findIndex(p => p.id === selectedPerfumeId);
       if (activeIndex !== -1 && children[activeIndex]) {
         const targetChild = children[activeIndex] as HTMLElement;
         const containerCenter = container.clientWidth / 2;
@@ -37,7 +38,7 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
         }
       }
     }
-  }, [selectedPerfumeId]);
+  }, [selectedPerfumeId, products]);
 
   // Handle manual scroll to update selectedPerfumeId
   const handleScroll = () => {
@@ -60,7 +61,7 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
         }
       }
 
-      const targetPerfume = PERFUMES[closestIndex];
+      const targetPerfume = products[closestIndex];
       if (targetPerfume && selectedPerfumeId !== targetPerfume.id) {
         isScrollingRef.current = true;
         setSelectedPerfumeId(targetPerfume.id as any);
@@ -89,13 +90,13 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
   }, [initialPerfumeId]);
 
   // Find currently selected perfume object
-  const currentPerfume = PERFUMES.find(p => p.id === selectedPerfumeId) || PERFUMES[0];
+  const currentPerfume = products.find(p => p.id === selectedPerfumeId) || products[0];
 
   // Calculate corporate pricing tier
-  // Single bottle: $185 (50ml) or $295 (100ml)
+  // Single bottle: price dynamically computed from database (usually 50ml base price, e.g. 499)
   // Tier discounts apply to the base price
-  const basePricePerUnit = size === '100 ML' ? 295 : 185;
-  const customizationFee = 15; // standard engraving + box wrapping fee
+  const basePricePerUnit = size === '100 ML' ? Math.round(currentPerfume.price * 1.6) : currentPerfume.price;
+  const customizationFee = 50; // standard engraving + box wrapping fee
   const rawPricePerUnit = basePricePerUnit + customizationFee;
 
   let discountRate = 0;
@@ -105,7 +106,7 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
   else if (quantity >= 5) discountRate = 0.05;
 
   const discountedUnitProductPrice = basePricePerUnit * (1 - discountRate);
-  const totalUnitCost = discountedUnitProductPrice + (includeCorporateLogo ? customizationFee + 5 : customizationFee);
+  const totalUnitCost = discountedUnitProductPrice + (includeCorporateLogo ? customizationFee + 25 : customizationFee);
   const totalOrderValue = totalUnitCost * quantity;
   const standardValue = rawPricePerUnit * quantity;
   const corporateSavings = standardValue - totalOrderValue;
@@ -195,7 +196,7 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
                 <span className="font-serif text-sm text-gold-200 tracking-widest uppercase font-extrabold">Select Olfactory Signature</span>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                {PERFUMES.map((p) => (
+                {products.map((p) => (
                   <button
                     key={p.id}
                     onClick={() => setSelectedPerfumeId(p.id)}
@@ -235,7 +236,7 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
                       {sz}
                     </span>
                     <span className="font-mono text-[8px] text-neutral-400 mt-0.5 font-bold">
-                      Base: {sz === '100 ML' ? '$295.00' : '$185.00'}
+                      Base: ₹{(sz === '100 ML' ? Math.round(currentPerfume.price * 1.6) : currentPerfume.price).toFixed(2)}
                     </span>
                   </button>
                 ))}
@@ -376,11 +377,11 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
                   Concierge Quote Summary
                 </span>
                 <div className="flex items-baseline space-x-2 mt-1">
-                  <span className="font-serif text-3xl text-gold-300 font-medium">${totalOrderValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                  <span className="font-sans text-xs text-neutral-400">Total USD</span>
+                  <span className="font-serif text-3xl text-gold-300 font-medium">₹{totalOrderValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  <span className="font-sans text-xs text-neutral-400">Total INR</span>
                 </div>
                 <span className="font-mono text-[9px] text-neutral-400">
-                  Unit Cost: ${totalUnitCost.toFixed(2)} (Customized {size} {currentPerfume.name})
+                  Unit Cost: ₹{totalUnitCost.toFixed(2)} (Customized {size} {currentPerfume.name})
                 </span>
               </div>
 
@@ -390,7 +391,7 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
                     ✓ CORPORATE SAVINGS SAVED
                   </span>
                   <span className="font-mono text-sm text-neutral-400">
-                    -${corporateSavings.toFixed(2)} USD
+                    -₹{corporateSavings.toFixed(2)} INR
                   </span>
                 </div>
               )}
@@ -464,12 +465,12 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
                     {/* Left Navigation Chevron */}
                     <button
                       onClick={() => {
-                        const idx = PERFUMES.findIndex(p => p.id === selectedPerfumeId);
+                        const idx = products.findIndex(p => p.id === selectedPerfumeId);
                         if (idx > 0) {
-                          setSelectedPerfumeId(PERFUMES[idx - 1].id as any);
+                          setSelectedPerfumeId(products[idx - 1].id as any);
                         }
                       }}
-                      disabled={selectedPerfumeId === PERFUMES[0].id}
+                      disabled={selectedPerfumeId === products[0].id}
                       className="absolute left-2 top-[45%] -translate-y-1/2 z-20 p-2 text-gold-400/60 hover:text-gold-300 disabled:opacity-20 transition-all cursor-pointer bg-neutral-900/40 hover:bg-neutral-900/80 rounded-full border border-white/5"
                     >
                       <ChevronDown className="w-5 h-5 rotate-90" />
@@ -478,12 +479,12 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
                     {/* Right Navigation Chevron */}
                     <button
                       onClick={() => {
-                        const idx = PERFUMES.findIndex(p => p.id === selectedPerfumeId);
-                        if (idx < PERFUMES.length - 1) {
-                          setSelectedPerfumeId(PERFUMES[idx + 1].id as any);
+                        const idx = products.findIndex(p => p.id === selectedPerfumeId);
+                        if (idx < products.length - 1) {
+                          setSelectedPerfumeId(products[idx + 1].id as any);
                         }
                       }}
-                      disabled={selectedPerfumeId === PERFUMES[PERFUMES.length - 1].id}
+                      disabled={selectedPerfumeId === products[products.length - 1].id}
                       className="absolute right-2 top-[45%] -translate-y-1/2 z-20 p-2 text-gold-400/60 hover:text-gold-300 disabled:opacity-20 transition-all cursor-pointer bg-neutral-900/40 hover:bg-neutral-900/80 rounded-full border border-white/5"
                     >
                       <ChevronDown className="w-5 h-5 -rotate-90" />
@@ -496,7 +497,7 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
                       className="w-full flex-grow flex items-center overflow-x-auto snap-x snap-mandatory scroll-smooth scrollbar-none relative"
                       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                     >
-                      {PERFUMES.map((p) => {
+                      {products.map((p) => {
                         return (
                           <div
                             key={p.id}
@@ -575,7 +576,7 @@ export default function CorporateGifting({ initialPerfumeId = 'muse', onAddCusto
                     <div className="w-full flex flex-col items-center space-y-3 pt-2 z-10">
                       {/* Gold Pagination Dots */}
                       <div className="flex space-x-2">
-                        {PERFUMES.map((p) => (
+                        {products.map((p) => (
                           <button
                             key={p.id}
                             onClick={() => setSelectedPerfumeId(p.id as any)}

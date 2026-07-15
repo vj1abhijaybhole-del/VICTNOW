@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Database } from 'lucide-react';
 import Header from './components/Header';
@@ -10,14 +10,35 @@ import CartDrawer from './components/CartDrawer';
 import CheckoutModal from './components/CheckoutModal';
 import Footer from './components/Footer';
 import LoginModal from './components/LoginModal';
+import ActivityHistoryModal from './components/ActivityHistoryModal';
 import DatabaseConsole from './components/DatabaseConsole';
-import { CartItem, GiftingCustomization, User } from './types';
-import { saveGiftingRequest } from './lib/supabase';
+import DeveloperGateModal from './components/DeveloperGateModal';
+import { CartItem, GiftingCustomization, User, Perfume } from './types';
+import { saveGiftingRequest, fetchProducts } from './lib/supabase';
+import { PERFUMES } from './data';
 
 export default function App() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [products, setProducts] = useState<Perfume[]>(PERFUMES);
+
+  // Load products dynamically from database
+  const loadProducts = async () => {
+    try {
+      const { data, error } = await fetchProducts();
+      if (!error && data && data.length > 0) {
+        setProducts(data);
+      }
+    } catch (err) {
+      console.error('Error fetching dynamic database products:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadProducts();
+  }, []);
   
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -26,6 +47,69 @@ export default function App() {
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isDbConsoleOpen, setIsDbConsoleOpen] = useState(false);
+  const [isDevGateOpen, setIsDevGateOpen] = useState(false);
+
+  // Secret Dev / Admin Backdoor access setup
+  useEffect(() => {
+    // 1. Direct /admin path routing access gate
+    const pathName = window.location.pathname.toLowerCase();
+    if (pathName === '/admin' || pathName === '/admin/') {
+      setIsDbConsoleOpen(true);
+    }
+
+    const secretCode = (import.meta.env.VITE_ADMIN_ACCESS_SECRET || "ceoviju").toLowerCase();
+
+    // 2. Check URL parameters for ?devkey=YOUR_SECRET_CODE
+    const params = new URLSearchParams(window.location.search);
+    const devkey = params.get('devkey');
+    if (devkey && devkey.toLowerCase() === secretCode) {
+      setIsDevGateOpen(true);
+      // Clean up URL parameter quietly to preserve layout integrity
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+
+    // 3. Secret Cheat-Code Sequence: Type the secret word anywhere on the keyboard to summon console
+    let typedBuffer = "";
+    let lastKeyTime = Date.now();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore keys typed while focusing on input fields or textareas to prevent false triggers
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+        return;
+      }
+
+      const now = Date.now();
+      // If there is more than a 3-second gap between typing keys, reset the buffer
+      if (now - lastKeyTime > 3000) {
+        typedBuffer = "";
+      }
+      lastKeyTime = now;
+
+      if (e.key.length === 1) {
+        typedBuffer += e.key.toLowerCase();
+        
+        // Keep only the last 20 characters of the typed buffer
+        if (typedBuffer.length > 20) {
+          typedBuffer = typedBuffer.slice(-20);
+        }
+        
+        if (typedBuffer.endsWith(secretCode)) {
+          setIsDevGateOpen(true);
+          typedBuffer = ""; // Reset buffer immediately
+        } else if (typedBuffer.endsWith('/admin') || typedBuffer.endsWith('admin')) {
+          setIsDbConsoleOpen(true);
+          typedBuffer = ""; // Reset buffer immediately
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
   const [pendingAction, setPendingAction] = useState<{
     type: 'standard' | 'custom';
     perfumeId: 'muse' | 'nexus' | 'forge';
@@ -46,7 +130,9 @@ export default function App() {
 
   // Raw cart additions
   const executeAddToCart = (perfumeId: 'muse' | 'nexus' | 'forge', size: '50 ML' | '100 ML' = '100 ML') => {
-    const price = size === '100 ML' ? 295 : 185;
+    const perf = products.find((p) => p.id === perfumeId);
+    const dbPrice = perf ? perf.price : 499;
+    const price = size === '100 ML' ? Math.round(dbPrice * 1.6) : dbPrice;
     setCartItems((prev) => {
       const existing = prev.find((item) => item.perfumeId === perfumeId && !item.isCustomized && item.size === size);
       if (existing) {
@@ -74,8 +160,10 @@ export default function App() {
     custom: GiftingCustomization,
     userOverride?: User
   ) => {
-    const basePrice = custom.size === '100 ML' ? 295 : 185;
-    const customizationFee = 15;
+    const perf = products.find((p) => p.id === perfumeId);
+    const dbPrice = perf ? perf.price : 499;
+    const basePrice = custom.size === '100 ML' ? Math.round(dbPrice * 1.6) : dbPrice;
+    const customizationFee = 50;
     let discountRate = 0;
     
     if (custom.quantity >= 50) discountRate = 0.20;
@@ -84,7 +172,7 @@ export default function App() {
     else if (custom.quantity >= 5) discountRate = 0.05;
 
     const discountedProductPrice = basePrice * (1 - discountRate);
-    const totalUnitCost = discountedProductPrice + (custom.includeCorporateLogo ? customizationFee + 5 : customizationFee);
+    const totalUnitCost = discountedProductPrice + (custom.includeCorporateLogo ? customizationFee + 25 : customizationFee);
 
     const newCustomItem: CartItem = {
       id: `custom-${perfumeId}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -197,6 +285,7 @@ export default function App() {
         currentUser={currentUser}
         onLoginClick={() => setIsLoginModalOpen(true)}
         onLogout={handleLogout}
+        onActivityClick={() => setIsActivityOpen(true)}
       />
 
       {/* Main Layout Blocks */}
@@ -213,6 +302,7 @@ export default function App() {
 
         {/* 3. Interactive Olfactory Collection Showcase */}
         <ProductSection
+          products={products}
           onAddToCart={handleAddToCart}
           onSelectForGifting={handleSelectForGifting}
         />
@@ -221,12 +311,16 @@ export default function App() {
         <CorporateGifting
           initialPerfumeId={selectedGiftingPerfumeId}
           onAddCustomizedToCart={handleAddCustomizedToCart}
+          products={products}
         />
 
       </main>
 
       {/* Luxury Brand Footer */}
-      <Footer scrollToSection={scrollToSection} />
+      <Footer 
+        scrollToSection={scrollToSection} 
+        onActivityClick={() => setIsActivityOpen(true)} 
+      />
 
       {/* Interactive Cart Slide-over Drawer */}
       <CartDrawer
@@ -254,21 +348,33 @@ export default function App() {
         onLoginSuccess={handleLoginSuccess}
       />
 
-      {/* Floating Database Sync Live Monitor Button */}
-      <div className="fixed bottom-6 right-6 z-40">
-        <button
-          onClick={() => setIsDbConsoleOpen(true)}
-          className="group flex items-center space-x-2 bg-gradient-to-r from-amber-500/90 to-amber-600/95 text-black px-4 py-3 rounded-full shadow-lg hover:shadow-amber-500/25 transition-all hover:scale-105 border border-amber-400 font-sans text-xs font-semibold"
-        >
-          <Database className="w-4 h-4 animate-bounce" />
-          <span>Postgres Sync Monitor</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
-        </button>
-      </div>
+      {/* Client Activities & Orders History Drawer */}
+      <ActivityHistoryModal
+        isOpen={isActivityOpen}
+        onClose={() => setIsActivityOpen(false)}
+        currentUser={currentUser}
+      />
 
-      <DatabaseConsole
-        isOpen={isDbConsoleOpen}
-        onClose={() => setIsDbConsoleOpen(false)}
+      {isDbConsoleOpen && (
+        <DatabaseConsole
+          isOpen={isDbConsoleOpen}
+          onClose={() => {
+            setIsDbConsoleOpen(false);
+            if (window.location.pathname.toLowerCase() === '/admin' || window.location.pathname.toLowerCase() === '/admin/') {
+              window.history.pushState({}, document.title, '/');
+            }
+          }}
+          onDataMutated={loadProducts}
+        />
+      )}
+
+      <DeveloperGateModal
+        isOpen={isDevGateOpen}
+        onClose={() => setIsDevGateOpen(false)}
+        onSuccess={() => {
+          setIsDevGateOpen(false);
+          setIsDbConsoleOpen(true);
+        }}
       />
 
     </div>

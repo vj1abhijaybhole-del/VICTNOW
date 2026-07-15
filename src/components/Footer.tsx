@@ -1,25 +1,43 @@
 import React, { useState } from 'react';
 import { Mail, Check, PhoneCall, ShieldCheck, ArrowRight, Instagram, Linkedin, Facebook } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { submitInvitationRequest } from '../lib/supabase';
 
 interface FooterProps {
   scrollToSection: (id: string) => void;
+  onActivityClick: () => void;
 }
 
-export default function Footer({ scrollToSection }: FooterProps) {
+export default function Footer({ scrollToSection, onActivityClick }: FooterProps) {
   const [email, setEmail] = useState('');
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [vipCode, setVipCode] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
 
-    // Generate simulated premium invitation code
-    const randomCode = `VIP-${Math.floor(1000 + Math.random() * 9000)}`;
-    setVipCode(randomCode);
-    setIsSubscribed(true);
-    setEmail('');
+    setIsSubmitting(true);
+    try {
+      const { data, error } = await submitInvitationRequest(email);
+      if (error) {
+        // Fallback locally if any error
+        const randomCode = `VIP-${Math.floor(1000 + Math.random() * 9000)}`;
+        setVipCode(randomCode);
+      } else if (data) {
+        setVipCode(data.vip_code);
+      }
+      setIsSubscribed(true);
+      setEmail('');
+    } catch (err) {
+      const randomCode = `VIP-${Math.floor(1000 + Math.random() * 9000)}`;
+      setVipCode(randomCode);
+      setIsSubscribed(true);
+      setEmail('');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -71,14 +89,16 @@ export default function Footer({ scrollToSection }: FooterProps) {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="flex-grow bg-neutral-950 border-2 border-white/20 px-4 py-3 font-sans text-xs text-white focus:outline-none focus:border-gold-400 transition-colors placeholder-neutral-400 font-extrabold"
+                    disabled={isSubmitting}
+                    className="flex-grow bg-neutral-950 border-2 border-white/20 px-4 py-3 font-sans text-xs text-white focus:outline-none focus:border-gold-400 transition-colors placeholder-neutral-400 font-extrabold disabled:opacity-50"
                     placeholder="Enter your corporate email address..."
                   />
                   <button
                     type="submit"
-                    className="px-6 py-3 bg-gold-500 hover:bg-gold-400 text-neutral-950 font-sans text-xs uppercase tracking-widest font-extrabold transition-colors cursor-pointer flex items-center justify-center space-x-2 shadow-lg"
+                    disabled={isSubmitting}
+                    className="px-6 py-3 bg-gold-500 hover:bg-gold-400 disabled:bg-gold-600 text-neutral-950 font-sans text-xs uppercase tracking-widest font-extrabold transition-colors cursor-pointer flex items-center justify-center space-x-2 shadow-lg disabled:opacity-75 disabled:cursor-not-allowed"
                   >
-                    <span>Request Invitation</span>
+                    <span>{isSubmitting ? 'Requesting...' : 'Request Invitation'}</span>
                     <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
                   </button>
                 </motion.form>
@@ -117,7 +137,7 @@ export default function Footer({ scrollToSection }: FooterProps) {
         </div>
 
         {/* Middle block: Directories & Contact */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 py-16 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 py-16 text-xs">
           
           {/* Quick Links */}
           <div className="space-y-4">
@@ -135,6 +155,15 @@ export default function Footer({ scrollToSection }: FooterProps) {
                   </button>
                 </li>
               ))}
+              <li>
+                <button
+                  onClick={onActivityClick}
+                  className="text-gold-400 hover:text-gold-300 transition-colors uppercase font-mono text-[10px] tracking-widest cursor-pointer text-left font-extrabold flex items-center space-x-1"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-gold-400 animate-ping mr-1"></span>
+                  <span>Track Delivery Status</span>
+                </button>
+              </li>
             </ul>
           </div>
 
@@ -158,8 +187,8 @@ export default function Footer({ scrollToSection }: FooterProps) {
             </h5>
             <ul className="space-y-2.5 text-neutral-100 font-sans font-bold">
               <li className="flex items-center space-x-2">
-                <Mail className="w-3.5 h-3.5 text-gold-400" />
-                <a href="mailto:victnowperfumes@gmail.com" className="hover:text-gold-300">victnowperfumes@gmail.com</a>
+                <Mail className="w-3.5 h-3.5 text-gold-400 flex-shrink-0" />
+                <a href="mailto:victnowperfumes@gmail.com" className="hover:text-gold-300 break-all">victnowperfumes@gmail.com</a>
               </li>
               <li className="flex items-center space-x-2">
                 <PhoneCall className="w-3.5 h-3.5 text-gold-400" />

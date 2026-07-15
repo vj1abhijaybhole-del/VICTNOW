@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CreditCard, Landmark, FileText, CheckCircle2, Award, Sparkles, Building, Loader2, ArrowLeft, Heart, ShieldCheck, Mail } from 'lucide-react';
+import { CreditCard, Landmark, FileText, CheckCircle2, Award, Sparkles, Building, Loader2, ArrowLeft, Heart, ShieldCheck, Mail, Zap, AlertTriangle } from 'lucide-react';
 import { CartItem, User as UserType } from '../types';
 import { PERFUMES, CARD_STYLES } from '../data';
 import { saveOrder } from '../lib/supabase';
@@ -36,9 +36,10 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
   }, [currentUser, isOpen]);
   const [address, setAddress] = useState('100 Financial Plaza, Penthouse B');
   const [city, setCity] = useState('New York');
+  const [stateVal, setStateVal] = useState('New York');
   const [zip, setZip] = useState('10005');
   const [country, setCountry] = useState('United States');
-  const [billingMethod, setBillingMethod] = useState<'card' | 'invoice' | 'wire'>('invoice');
+  const [billingMethod, setBillingMethod] = useState<'card' | 'invoice' | 'wire' | 'razorpay'>('razorpay');
   const [poNumber, setPoNumber] = useState('PO-2026-94812');
   const [conciergeNotes, setConciergeNotes] = useState('Deliver before the board meeting on Thursday morning. Please use white-glove security routing.');
 
@@ -46,22 +47,67 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
   const [orderId, setOrderId] = useState('');
   const [authCertificateCode, setAuthCertificateCode] = useState('');
 
+  // Razorpay integration states
+  const [razorpayError, setRazorpayError] = useState<string>('');
+  const [showRzpSimulator, setShowRzpSimulator] = useState<boolean>(false);
+  const [activeRzpOrder, setActiveRzpOrder] = useState<any>(null);
+  const [isRzpLoading, setIsRzpLoading] = useState<boolean>(false);
+  const [forceSandbox, setForceSandbox] = useState<boolean>(true);
+
+  // Auto-detect Razorpay credentials on the server and disable sandbox if real credentials exist
+  useEffect(() => {
+    if (isOpen) {
+      fetch('/api/razorpay/config')
+        .then((res) => {
+          if (res.ok) return res.json();
+          throw new Error('Config request failed');
+        })
+        .then((config) => {
+          if (config && config.isMock === false) {
+            setForceSandbox(false);
+          } else {
+            setForceSandbox(true);
+          }
+        })
+        .catch(() => {
+          setForceSandbox(true);
+        });
+    }
+  }, [isOpen]);
+
+
   // Math
   const subtotal = cartItems.reduce((acc, item) => acc + (item.unitPrice * item.quantity), 0);
-  const shipping = subtotal > 300 ? 0 : 25;
+  const shipping = 0;
   const total = subtotal + shipping;
 
-  const handlePlaceOrder = (e: React.FormEvent) => {
-    e.preventDefault();
-    setStep('processing');
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
 
-    // Sync order details to Supabase database
-    saveOrder({
+  const completeSuccessfulOrder = async (rzpOrderId: string, rzpPaymentId: string) => {
+    const generatedOrderNum = `VTN-${Math.floor(100000 + Math.random() * 900000)}`;
+    const generatedCertNum = `CERT-${Math.floor(200000 + Math.random() * 800000)}-${currentDateCode()}`;
+    
+    setStep('processing');
+    setProcessState('Securing luxury order in database...');
+
+    const res = await saveOrder({
       customer_name: fullName,
       customer_email: email,
       customer_phone: phone,
       company: company || null,
-      address: `${address}, ${city}, ${zip}, ${country}`,
+      address: `${address}, ${city}, ${stateVal}, ${zip}, ${country}`,
       city: city,
       zip: zip,
       items: cartItems.map(item => ({
@@ -74,32 +120,174 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
         unitPrice: item.unitPrice
       })),
       total_price: total,
-      payment_method: billingMethod
+      payment_method: `Razorpay (${rzpPaymentId || 'simulated'})`
     });
 
-    const states = [
-      { text: 'Initiating secure executive vault transaction...', delay: 600 },
-      { text: 'Validating limited edition serial allocations...', delay: 1200 },
-      { text: 'Etching laser blueprint files for recipient crystal engraving...', delay: 1800 },
-      { text: 'Generating Gold Foil hot-stamp printing card files...', delay: 2400 },
-      { text: 'Registering Certificate of Olfactory Authenticity codes...', delay: 3000 },
-      { text: 'Completing order serialization...', delay: 3600 }
-    ];
+    if (res.error) {
+      setStep('form');
+      setRazorpayError(`Database Order Registration Failed: ${res.error.message || res.error}`);
+      return;
+    }
 
-    states.forEach((s) => {
+    setOrderId(generatedOrderNum);
+    setAuthCertificateCode(generatedCertNum);
+    setStep('success');
+  };
+
+  const handlePlaceOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRazorpayError('');
+
+    if (billingMethod === 'razorpay') {
+      setIsRzpLoading(true);
+      setStep('processing');
+      setProcessState('Initiating secure Razorpay gateway handshake...');
+
+      try {
+        const orderRes = await fetch('/api/razorpay/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: total, // already in INR
+            currency: 'INR'
+          })
+        });
+
+        if (!orderRes.ok) {
+          throw new Error('Failed to create payment order on server.');
+        }
+
+        const order = await orderRes.json();
+        setActiveRzpOrder(order);
+
+        const configRes = await fetch('/api/razorpay/config');
+        const config = await configRes.json();
+
+        if (forceSandbox || order.isMock || config.isMock) {
+          setProcessState('Launching Razorpay Sandbox payment panel...');
+          setTimeout(() => {
+            setShowRzpSimulator(true);
+          }, 800);
+          return;
+        }
+
+        const scriptLoaded = await loadRazorpayScript();
+        if (!scriptLoaded) {
+          throw new Error('Failed to load Razorpay payment library.');
+        }
+
+        setProcessState('Awaiting authentication signature...');
+        const options = {
+          key: config.keyId,
+          amount: order.amount,
+          currency: order.currency,
+          name: "VICTNOW Perfumes",
+          description: "Exclusive Bespoke Purchase",
+          order_id: order.id,
+          handler: async function (response: any) {
+            setStep('processing');
+            setProcessState('Verifying Razorpay cryptographic signature...');
+            try {
+              const verifyRes = await fetch('/api/razorpay/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature
+                })
+              });
+              const verifyResult = await verifyRes.json();
+              if (verifyResult.success) {
+                completeSuccessfulOrder(response.razorpay_order_id, response.razorpay_payment_id);
+              } else {
+                setStep('form');
+                setRazorpayError(verifyResult.error || 'Payment signature verification failed.');
+              }
+            } catch (err: any) {
+              setStep('form');
+              setRazorpayError('Could not connect to verification endpoint.');
+            }
+          },
+          prefill: {
+            name: fullName,
+            email: email,
+            contact: phone
+          },
+          theme: {
+            color: "#d4af37"
+          },
+          modal: {
+            ondismiss: function() {
+              setStep('form');
+            }
+          }
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+
+      } catch (err: any) {
+        setStep('form');
+        setRazorpayError(err.message || 'Razorpay initialization failed.');
+      } finally {
+        setIsRzpLoading(false);
+      }
+    } else {
+      setStep('processing');
+      setProcessState('Initiating secure executive vault transaction...');
+
+      // Sync order details to Supabase database
+      const res = await saveOrder({
+        customer_name: fullName,
+        customer_email: email,
+        customer_phone: phone,
+        company: company || null,
+        address: `${address}, ${city}, ${stateVal}, ${zip}, ${country}`,
+        city: city,
+        zip: zip,
+        items: cartItems.map(item => ({
+          perfumeId: item.perfumeId,
+          size: item.size,
+          quantity: item.quantity,
+          isCustomized: item.isCustomized,
+          recipientName: item.customization?.recipientName || null,
+          message: item.customization?.customMessage || null,
+          unitPrice: item.unitPrice
+        })),
+        total_price: total,
+        payment_method: billingMethod
+      });
+
+      if (res.error) {
+        setStep('form');
+        setRazorpayError(`Database Order Registration Failed: ${res.error.message || res.error}`);
+        return;
+      }
+
+      const states = [
+        { text: 'Validating limited edition serial allocations...', delay: 600 },
+        { text: 'Etching laser blueprint files for recipient crystal engraving...', delay: 1200 },
+        { text: 'Generating Gold Foil hot-stamp printing card files...', delay: 1800 },
+        { text: 'Registering Certificate of Olfactory Authenticity codes...', delay: 2400 },
+        { text: 'Completing order serialization...', delay: 3000 }
+      ];
+
+      states.forEach((s) => {
+        setTimeout(() => {
+          setProcessState(s.text);
+        }, s.delay);
+      });
+
+      // Final trigger
       setTimeout(() => {
-        setProcessState(s.text);
-      }, s.delay);
-    });
-
-    // Final trigger
-    setTimeout(() => {
-      const generatedOrderNum = `VTN-${Math.floor(100000 + Math.random() * 900000)}`;
-      const generatedCertNum = `CERT-${Math.floor(200000 + Math.random() * 800000)}-${currentDateCode()}`;
-      setOrderId(generatedOrderNum);
-      setAuthCertificateCode(generatedCertNum);
-      setStep('success');
-    }, 4200);
+        const generatedOrderNum = `VTN-${Math.floor(100000 + Math.random() * 900000)}`;
+        const generatedCertNum = `CERT-${Math.floor(200000 + Math.random() * 800000)}-${currentDateCode()}`;
+        setOrderId(generatedOrderNum);
+        setAuthCertificateCode(generatedCertNum);
+        setStep('success');
+      }, 3600);
+    }
   };
 
   const currentDateCode = () => {
@@ -205,21 +393,6 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                           </div>
                           <div>
                             <label className="font-mono text-[10px] uppercase tracking-wider text-neutral-200 block mb-1 font-extrabold">
-                              Corporate Entity / Firm
-                            </label>
-                            <div className="relative">
-                              <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
-                              <input
-                                type="text"
-                                value={company}
-                                onChange={(e) => setCompany(e.target.value)}
-                                className="w-full bg-neutral-950 border-2 border-white/20 pl-9 pr-3 py-2 font-sans text-xs text-white focus:outline-none focus:border-gold-400 transition-colors font-bold"
-                                placeholder="Optional"
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label className="font-mono text-[10px] uppercase tracking-wider text-neutral-200 block mb-1 font-extrabold">
                               Concierge Phone Number
                             </label>
                             <input
@@ -236,7 +409,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                       {/* Section 2: Address */}
                       <div className="space-y-4 pt-4">
                         <h4 className="font-serif text-xs text-gold-300 uppercase tracking-widest border-b border-white/10 pb-2 font-extrabold">
-                          Courier Destination
+                          Delivery Destination
                         </h4>
                         <div className="space-y-4">
                           <div>
@@ -251,8 +424,8 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                               className="w-full bg-neutral-950 border-2 border-white/20 px-3 py-2 font-sans text-xs text-white focus:outline-none focus:border-gold-400 transition-colors font-bold"
                             />
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="col-span-1 md:col-span-2">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
                               <label className="font-mono text-[10px] uppercase tracking-wider text-neutral-200 block mb-1 font-extrabold">
                                 City
                               </label>
@@ -261,6 +434,18 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                                 required
                                 value={city}
                                 onChange={(e) => setCity(e.target.value)}
+                                className="w-full bg-neutral-950 border-2 border-white/20 px-3 py-2 font-sans text-xs text-white focus:outline-none focus:border-gold-400 transition-colors font-bold"
+                              />
+                            </div>
+                            <div>
+                              <label className="font-mono text-[10px] uppercase tracking-wider text-neutral-200 block mb-1 font-extrabold">
+                                State
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={stateVal}
+                                onChange={(e) => setStateVal(e.target.value)}
                                 className="w-full bg-neutral-950 border-2 border-white/20 px-3 py-2 font-sans text-xs text-white focus:outline-none focus:border-gold-400 transition-colors font-bold"
                               />
                             </div>
@@ -298,7 +483,17 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                           Billing Arrangement
                         </h4>
                         
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setBillingMethod('razorpay')}
+                            className={`py-3 px-3 border-2 font-mono text-[10px] uppercase tracking-widest cursor-pointer flex flex-col items-center justify-center space-y-1 font-extrabold transition-all duration-200 ${
+                              billingMethod === 'razorpay' ? 'border-gold-400 text-gold-300 bg-gold-950/20 shadow-lg shadow-gold-950/30' : 'border-white/10 text-neutral-300 bg-neutral-900/60 hover:bg-neutral-800'
+                            }`}
+                          >
+                            <Zap className="w-4.5 h-4.5 text-gold-400" />
+                            <span>Razorpay Pay</span>
+                          </button>
                           <button
                             type="button"
                             onClick={() => setBillingMethod('invoice')}
@@ -319,17 +514,69 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                             <CreditCard className="w-4.5 h-4.5" />
                             <span>Executive Card</span>
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => setBillingMethod('wire')}
-                            className={`py-3 px-3 border-2 font-mono text-[10px] uppercase tracking-widest cursor-pointer flex flex-col items-center justify-center space-y-1 font-extrabold transition-all duration-200 ${
-                              billingMethod === 'wire' ? 'border-gold-400 text-gold-300 bg-gold-950/20 shadow-lg' : 'border-white/10 text-neutral-300 bg-neutral-900/60 hover:bg-neutral-800'
-                            }`}
-                          >
-                            <Landmark className="w-4.5 h-4.5" />
-                            <span>Wire Transfer</span>
-                          </button>
                         </div>
+
+                        {razorpayError && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-rose-950/30 border-2 border-rose-500/20 p-3 flex items-start space-x-2 text-rose-300 shadow-md rounded-md"
+                          >
+                            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                            <div className="font-mono text-[10px] uppercase tracking-wider font-bold">
+                              <span>Transaction Handshake Error: {razorpayError}</span>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {billingMethod === 'razorpay' && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="space-y-3"
+                          >
+                            <div className="bg-[#0b0c0e] p-4 border-2 border-white/10 text-left shadow-lg space-y-2.5">
+                              <div className="flex items-center space-x-2 text-gold-300 font-mono text-xs font-bold uppercase tracking-wider">
+                                <Zap className="w-4 h-4 text-gold-400 shrink-0" />
+                                <span>Instant Payment Handshake Gate</span>
+                              </div>
+                              <p className="font-sans text-[11px] text-neutral-200 font-bold leading-relaxed">
+                                You will pay in Indian Rupees (INR) securely. Total: <strong className="font-mono text-gold-300 font-extrabold">₹{total.toLocaleString(undefined, {maximumFractionDigits: 0})} INR</strong>.
+                              </p>
+                              <p className="font-sans text-[10px] text-neutral-400 leading-relaxed">
+                                Secured by Razorpay. Accepts Credit/Debit Cards, UPI, Netbanking, and popular wallets.
+                              </p>
+                            </div>
+
+                            {/* Dev Sandbox Toggle - Critical for AI Studio Preview Environment */}
+                            <div className="bg-amber-500/5 border-2 border-amber-500/20 p-3.5 space-y-2.5 text-left rounded">
+                              <div className="flex items-start justify-between space-x-4">
+                                <div className="space-y-1">
+                                  <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-amber-300 flex items-center space-x-1.5">
+                                    <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-ping shrink-0" />
+                                    <span>Developer Sandbox Mode</span>
+                                  </span>
+                                  <p className="font-sans text-[11px] text-neutral-300 leading-normal font-bold">
+                                    Bypasses Razorpay's "Website mismatch" security block to simulate zero-cost order finalize. When deploying on your domain, this sandbox mode is automatically disabled once you configure your RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the environment variables.
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setForceSandbox(!forceSandbox)}
+                                  className={`w-11 h-6 shrink-0 rounded-full transition-colors relative focus:outline-none cursor-pointer ${
+                                    forceSandbox ? 'bg-amber-500' : 'bg-neutral-800 border-2 border-neutral-700'
+                                  }`}
+                                >
+                                  <div
+                                    className={`w-4 h-4 rounded-full bg-black absolute top-[2px] transition-all duration-200 ${
+                                      forceSandbox ? 'left-[22px]' : 'left-1'
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
 
                         {billingMethod === 'invoice' && (
                           <motion.div
@@ -414,7 +661,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                       {/* Section 4: Concierge Delivery Instructions */}
                       <div>
                         <label className="font-mono text-[10px] uppercase tracking-wider text-neutral-200 block mb-1 font-extrabold">
-                          Private Courier Dispatch Notes
+                          Private Delivery Notes
                         </label>
                         <textarea
                           rows={2}
@@ -452,7 +699,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                                   )}
                                 </div>
                                 <span className="font-mono text-white font-bold flex-shrink-0">
-                                  ${(item.unitPrice * item.quantity).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                  ₹{(item.unitPrice * item.quantity).toLocaleString(undefined, {minimumFractionDigits: 2})}
                                 </span>
                               </div>
                             );
@@ -463,17 +710,17 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                         <div className="space-y-2 pt-4 border-t border-white/10 text-xs text-left">
                           <div className="flex justify-between text-neutral-200 font-bold">
                             <span>Subtotal</span>
-                            <span className="font-mono text-white font-extrabold">${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                            <span className="font-mono text-white font-extrabold">₹{subtotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                           </div>
                           <div className="flex justify-between text-neutral-200 font-bold">
-                            <span>Courier Freight</span>
-                            <span className="font-mono text-white font-extrabold">
-                              {shipping === 0 ? 'COMPLIMENTARY' : `$${shipping.toFixed(2)}`}
+                            <span>Delivery</span>
+                            <span className="font-mono text-emerald-400 font-extrabold">
+                              FREE
                             </span>
                           </div>
                           <div className="flex justify-between pt-3 border-t border-white/10 font-serif text-sm font-extrabold text-white uppercase tracking-wider">
                             <span>Invoice Total</span>
-                            <span className="font-mono text-lg text-gold-200 font-extrabold">${total.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                            <span className="font-mono text-lg text-gold-200 font-extrabold">₹{total.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                           </div>
                         </div>
                       </div>
@@ -537,7 +784,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                         Legacy Registered
                       </h4>
                       <p className="font-sans text-sm text-neutral-100 max-w-md mx-auto mt-2 text-center font-bold leading-relaxed">
-                        An elite corporate advisor has been allocated to oversee the physical customization of your order. You will receive a courier coordination briefing within 1 hour.
+                        An elite corporate advisor has been allocated to oversee the physical customization of your order. You will receive a delivery coordination briefing within 1 hour.
                       </p>
                     </div>
 
@@ -575,7 +822,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                         <div>
                           <span className="font-mono text-[9px] text-neutral-400 uppercase tracking-wider block mb-1 font-extrabold">Dispatch Destination</span>
                           <p className="font-sans text-neutral-100 text-[11px] font-bold">{address}</p>
-                          <p className="font-sans text-neutral-100 text-[11px] font-bold">{city}, {zip}, {country}</p>
+                          <p className="font-sans text-neutral-100 text-[11px] font-bold">{city}, {stateVal}, {zip}, {country}</p>
                         </div>
                       </div>
 
@@ -609,7 +856,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                                 )}
                               </div>
                               <span className="font-mono text-white font-extrabold">
-                                ${(item.unitPrice * item.quantity).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                ₹{(item.unitPrice * item.quantity).toLocaleString(undefined, {minimumFractionDigits: 2})}
                               </span>
                             </div>
                           );
@@ -632,7 +879,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                             Total Charged Amount
                           </span>
                           <span className="font-serif text-2xl text-gold-300 font-extrabold">
-                            ${total.toLocaleString(undefined, {minimumFractionDigits: 2})} USD
+                            ₹{total.toLocaleString(undefined, {minimumFractionDigits: 2})} INR
                           </span>
                           <span className="font-mono text-[9px] text-emerald-400 uppercase tracking-widest mt-1 font-extrabold">
                             ✓ {billingMethod === 'invoice' ? 'PO APPROVED / PENDING INVOICE' : 'AUTHORIZED SECURELY'}
@@ -656,6 +903,115 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                 )}
 
               </AnimatePresence>
+
+              {/* Razorpay Interactive Sandbox Simulator Dialog */}
+              <AnimatePresence>
+                {showRzpSimulator && (
+                  <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[200] p-4">
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                      className="bg-neutral-900 border-2 border-gold-400/40 w-full max-w-md shadow-2xl rounded-lg overflow-hidden flex flex-col font-sans"
+                    >
+                      {/* Simulator Header */}
+                      <div className="bg-[#122448] p-4 flex items-center justify-between border-b border-gold-400/20">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 rounded bg-blue-500 flex items-center justify-center shadow-inner">
+                            <Zap className="w-4 h-4 text-white animate-pulse" />
+                          </div>
+                          <div>
+                            <h3 className="text-white text-xs font-mono uppercase tracking-widest font-extrabold">
+                              Razorpay Sandbox
+                            </h3>
+                            <p className="text-[9px] text-blue-300 font-mono tracking-wider">SECURE PAYMENTS PORTAL</p>
+                          </div>
+                        </div>
+                        <div className="bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 rounded text-[9px] text-emerald-300 font-mono font-extrabold uppercase tracking-wide">
+                          TEST MODE
+                        </div>
+                      </div>
+
+                      {/* Simulator Body */}
+                      <div className="p-5 space-y-4">
+                        <div className="bg-neutral-950 p-4 border border-white/5 space-y-2 rounded text-left">
+                          <div className="flex justify-between text-[11px] text-neutral-400 font-mono uppercase tracking-wider">
+                            <span>Client Email</span>
+                            <span className="text-neutral-200 font-bold">{email}</span>
+                          </div>
+                          <div className="flex justify-between text-[11px] text-neutral-400 font-mono uppercase tracking-wider">
+                            <span>Contact Phone</span>
+                            <span className="text-neutral-200 font-bold">{phone}</span>
+                          </div>
+                          <div className="flex justify-between text-[11px] text-neutral-400 font-mono uppercase tracking-wider">
+                            <span>Order ID Reference</span>
+                            <span className="text-neutral-200 font-mono font-bold">{activeRzpOrder?.id || 'MOCK_ORDER_ID'}</span>
+                          </div>
+                          <div className="border-t border-white/10 pt-2 flex justify-between text-xs text-neutral-200 font-extrabold uppercase tracking-widest">
+                            <span>Total Amount</span>
+                            <span className="text-gold-300 text-sm">
+                              ₹{Math.round(total).toLocaleString()} INR
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 text-left">
+                          <p className="font-mono text-[9px] text-neutral-400 uppercase tracking-widest font-extrabold">
+                            SELECT SIMULATED BANK ACTION
+                          </p>
+                          <p className="font-sans text-[11px] text-neutral-300 leading-relaxed font-bold">
+                            This sandbox environment allows you to simulate Razorpay's API responses inside the secure workspace frame.
+                          </p>
+                        </div>
+
+                        {/* Simulated Payment Methods Choice List */}
+                        <div className="space-y-1.5 text-left">
+                          <div className="bg-neutral-950 border border-white/10 px-3 py-2 rounded-md flex items-center justify-between text-xs font-semibold text-neutral-200 hover:border-gold-400/40 transition-colors">
+                            <span className="flex items-center space-x-2">
+                              <CreditCard className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                              <span>Simulate Visa/Mastercard (Debit/Credit)</span>
+                            </span>
+                            <span className="text-[9px] text-neutral-500 font-mono font-extrabold">AUTO</span>
+                          </div>
+                          <div className="bg-neutral-950 border border-white/10 px-3 py-2 rounded-md flex items-center justify-between text-xs font-semibold text-neutral-200 hover:border-gold-400/40 transition-colors">
+                            <span className="flex items-center space-x-2">
+                              <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              <span>Simulate Instant UPI QR Scan</span>
+                            </span>
+                            <span className="text-[9px] text-neutral-500 font-mono font-extrabold">AUTO</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="bg-neutral-950 p-4 border-t border-white/10 grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowRzpSimulator(false);
+                            completeSuccessfulOrder(activeRzpOrder?.id || 'order_mock_sim', 'pay_mock_' + Math.floor(100000 + Math.random() * 900000));
+                          }}
+                          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-[10px] uppercase tracking-widest font-extrabold transition-all duration-200 cursor-pointer shadow-lg rounded"
+                        >
+                          Authorize Payment
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowRzpSimulator(false);
+                            setStep('form');
+                            setRazorpayError('Simulated transaction declined/cancelled by customer.');
+                          }}
+                          className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-rose-400 font-mono text-[10px] uppercase tracking-widest font-extrabold transition-all duration-200 cursor-pointer rounded"
+                        >
+                          Decline/Cancel
+                        </button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+
             </div>
 
           </motion.div>
