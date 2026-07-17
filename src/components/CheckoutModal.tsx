@@ -52,7 +52,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
   const [showRzpSimulator, setShowRzpSimulator] = useState<boolean>(false);
   const [activeRzpOrder, setActiveRzpOrder] = useState<any>(null);
   const [isRzpLoading, setIsRzpLoading] = useState<boolean>(false);
-  const [forceSandbox, setForceSandbox] = useState(false);
+  const [forceSandbox, setForceSandbox] = useState<boolean>(true);
 
   // Auto-detect Razorpay credentials on the server and disable sandbox if real credentials exist
   useEffect(() => {
@@ -163,7 +163,13 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
         const configRes = await fetch('/api/razorpay/config');
         const config = await configRes.json();
 
-             
+        if (forceSandbox || order.isMock || config.isMock) {
+          setProcessState('Launching Razorpay Sandbox payment panel...');
+          setTimeout(() => {
+            setShowRzpSimulator(true);
+          }, 800);
+          return;
+        }
 
         const scriptLoaded = await loadRazorpayScript();
         if (!scriptLoaded) {
@@ -542,33 +548,6 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                               </p>
                             </div>
 
-                            {/* Dev Sandbox Toggle - Critical for AI Studio Preview Environment */}
-                            <div className="bg-amber-500/5 border-2 border-amber-500/20 p-3.5 space-y-2.5 text-left rounded">
-                              <div className="flex items-start justify-between space-x-4">
-                                <div className="space-y-1">
-                                  <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-amber-300 flex items-center space-x-1.5">
-                                    <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-ping shrink-0" />
-                                    <span>Developer Sandbox Mode</span>
-                                  </span>
-                                  <p className="font-sans text-[11px] text-neutral-300 leading-normal font-bold">
-                                    Bypasses Razorpay's "Website mismatch" security block to simulate zero-cost order finalize. When deploying on your domain, this sandbox mode is automatically disabled once you configure your RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the environment variables.
-                                  </p>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setForceSandbox(!forceSandbox)}
-                                  className={`w-11 h-6 shrink-0 rounded-full transition-colors relative focus:outline-none cursor-pointer ${
-                                    forceSandbox ? 'bg-amber-500' : 'bg-neutral-800 border-2 border-neutral-700'
-                                  }`}
-                                >
-                                  <div
-                                    className={`w-4 h-4 rounded-full bg-black absolute top-[2px] transition-all duration-200 ${
-                                      forceSandbox ? 'left-[22px]' : 'left-1'
-                                    }`}
-                                  />
-                                </button>
-                              </div>
-                            </div>
                           </motion.div>
                         )}
 
