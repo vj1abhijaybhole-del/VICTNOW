@@ -31,17 +31,17 @@ export interface GiftingCustomization {
   includeCorporateLogo: boolean;
   logoUrl?: string;
   engravingFont: 'serif' | 'sans' | 'script';
-  size: '50 ML' | '100 ML';
+  size: string;
 }
 
 export interface CartItem {
   id: string; // Unique entry ID (e.g., standard item or customized combo)
-  perfumeId: 'muse' | 'nexus' | 'forge';
+  perfumeId: string;
   quantity: number;
   isCustomized: boolean;
   customization?: GiftingCustomization;
   unitPrice: number;
-  size: '50 ML' | '100 ML';
+  size: string;
 }
 
 export interface MessagePreset {

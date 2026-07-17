@@ -13,6 +13,7 @@ import LoginModal from './components/LoginModal';
 import ActivityHistoryModal from './components/ActivityHistoryModal';
 import DatabaseConsole from './components/DatabaseConsole';
 import DeveloperGateModal from './components/DeveloperGateModal';
+import DiscoverySuite from './components/DiscoverySuite';
 import { CartItem, GiftingCustomization, User, Perfume } from './types';
 import { saveGiftingRequest, fetchProducts } from './lib/supabase';
 import { PERFUMES } from './data';
@@ -111,9 +112,9 @@ export default function App() {
     };
   }, []);
   const [pendingAction, setPendingAction] = useState<{
-    type: 'standard' | 'custom';
-    perfumeId: 'muse' | 'nexus' | 'forge';
-    size?: '50 ML' | '100 ML';
+    type: 'standard' | 'custom' | 'trial';
+    perfumeId: string;
+    size?: string;
     custom?: GiftingCustomization;
   } | null>(null);
 
@@ -220,6 +221,68 @@ export default function App() {
     scrollToSection('gifting');
   };
 
+  // Add signature trial pack with login protection
+  const executeAddTrialToCart = (recipientName: string, boxDesign: string, message: string, triggerCheckout?: boolean) => {
+    const newTrialItem: CartItem = {
+      id: `trial-pack-${Date.now()}`,
+      perfumeId: 'signature-trial-pack',
+      quantity: 1,
+      isCustomized: true,
+      customization: {
+        recipientName,
+        cardDesign: 'gold',
+        messagePresetId: boxDesign,
+        customMessage: message,
+        quantity: 1,
+        includeCorporateLogo: false,
+        engravingFont: 'serif',
+        size: '10ML x 3'
+      },
+      unitPrice: 499,
+      size: '10ML x 3'
+    };
+
+    setCartItems((prev) => {
+      const existing = prev.find((item) => item.perfumeId === 'signature-trial-pack');
+      if (existing) {
+        return prev.map((item) =>
+          item.id === existing.id ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      }
+      return [...prev, newTrialItem];
+    });
+
+    if (triggerCheckout) {
+      setIsCartOpen(false);
+      setIsCheckoutOpen(true);
+    } else {
+      setIsCartOpen(true);
+    }
+  };
+
+  const handleAddTrialToCart = (recipientName: string, boxDesign: string, message: string, triggerCheckout?: boolean) => {
+    if (!currentUser) {
+      setPendingAction({
+        type: 'trial' as any,
+        perfumeId: 'signature-trial-pack' as any,
+        size: '10ML x 3',
+        custom: {
+          recipientName,
+          cardDesign: 'gold',
+          messagePresetId: boxDesign,
+          customMessage: message,
+          quantity: 1,
+          includeCorporateLogo: false,
+          engravingFont: 'serif',
+          size: '10ML x 3'
+        }
+      });
+      setIsLoginModalOpen(true);
+      return;
+    }
+    executeAddTrialToCart(recipientName, boxDesign, message, triggerCheckout);
+  };
+
   // Add customized package with login protection
   const handleAddCustomizedToCart = (perfumeId: 'muse' | 'nexus' | 'forge', custom: GiftingCustomization) => {
     if (!currentUser) {
@@ -237,9 +300,15 @@ export default function App() {
 
     if (pendingAction) {
       if (pendingAction.type === 'standard') {
-        executeAddToCart(pendingAction.perfumeId, pendingAction.size);
+        executeAddToCart(pendingAction.perfumeId as any, pendingAction.size as any);
       } else if (pendingAction.type === 'custom' && pendingAction.custom) {
-        executeAddCustomizedToCart(pendingAction.perfumeId, pendingAction.custom, user);
+        executeAddCustomizedToCart(pendingAction.perfumeId as any, pendingAction.custom, user);
+      } else if (pendingAction.type === ('trial' as any) && pendingAction.custom) {
+        executeAddTrialToCart(
+          pendingAction.custom.recipientName,
+          pendingAction.custom.messagePresetId,
+          pendingAction.custom.customMessage
+        );
       }
       setPendingAction(null);
     }
@@ -306,6 +375,9 @@ export default function App() {
           onAddToCart={handleAddToCart}
           onSelectForGifting={handleSelectForGifting}
         />
+
+        {/* 3.5. Curated Signature Discovery Suite Section */}
+        <DiscoverySuite onAddTrialToCart={handleAddTrialToCart} />
 
         {/* 4. Bespoke Corporate Personalization Studio */}
         <CorporateGifting

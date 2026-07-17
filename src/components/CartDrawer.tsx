@@ -90,7 +90,13 @@ export default function CartDrawer({
                   </div>
                 ) : (
                   cartItems.map((item) => {
-                    const perfume = PERFUMES.find((p) => p.id === item.perfumeId);
+                    const isTrialPack = item.perfumeId === 'signature-trial-pack';
+                    const perfume = isTrialPack
+                      ? {
+                          name: 'Signature Discovery Suite (10ML x 3)',
+                          imageUrl: 'https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=300&q=80'
+                        }
+                      : PERFUMES.find((p) => p.id === item.perfumeId);
                     if (!perfume) return null;
 
                     const cardName = item.customization
@@ -124,7 +130,7 @@ export default function CartDrawer({
                           </div>
                           
                           <p className="font-sans text-[10px] text-neutral-200 mt-0.5 uppercase tracking-wider font-extrabold">
-                            {item.size} • Standard Limited Flacon
+                            {isTrialPack ? 'Discovery Pack • 10ML x 3' : `${item.size} • Standard Limited Flacon`}
                           </p>
 
                           {/* Personalization Specs */}

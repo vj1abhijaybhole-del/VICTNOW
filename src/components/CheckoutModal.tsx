@@ -656,7 +656,10 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
 
                         <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
                           {cartItems.map((item) => {
-                            const perfume = PERFUMES.find(p => p.id === item.perfumeId);
+                            const isTrialPack = item.perfumeId === 'signature-trial-pack';
+                            const perfume = isTrialPack
+                              ? { name: 'Signature Discovery Suite' }
+                              : PERFUMES.find(p => p.id === item.perfumeId);
                             if (!perfume) return null;
 
                             return (
@@ -667,7 +670,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                                   </p>
                                   {item.isCustomized && (
                                     <p className="font-mono text-[9px] text-gold-300 uppercase mt-0.5 tracking-wider font-extrabold">
-                                      Bespoke Engraved for {item.customization?.recipientName}
+                                      {isTrialPack ? `Engraved Name: ${item.customization?.recipientName || 'Myself'}` : `Bespoke Engraved for ${item.customization?.recipientName}`}
                                     </p>
                                   )}
                                 </div>
@@ -804,14 +807,17 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
                         <span className="font-mono text-[9px] text-neutral-400 uppercase tracking-wider block mb-2 font-extrabold">Registered Assets</span>
                         
                         {cartItems.map((item) => {
-                          const perfume = PERFUMES.find(p => p.id === item.perfumeId);
+                          const isTrialPack = item.perfumeId === 'signature-trial-pack';
+                          const perfume = isTrialPack
+                            ? { name: 'Signature Discovery Suite' }
+                            : PERFUMES.find(p => p.id === item.perfumeId);
                           if (!perfume) return null;
 
                           return (
                             <div key={item.id} className="flex justify-between items-start text-xs leading-relaxed">
                               <div>
                                 <p className="font-serif text-white uppercase tracking-widest font-extrabold">
-                                  {perfume.name} <span className="font-mono text-gold-300">x{item.quantity} Bottles</span>
+                                  {perfume.name} <span className="font-mono text-gold-300">{isTrialPack ? `x${item.quantity} Suite` : `x${item.quantity} Bottles`}</span>
                                 </p>
                                 {item.isCustomized ? (
                                   <div className="mt-1.5 space-y-0.5 bg-neutral-950 p-2.5 border border-white/10">
