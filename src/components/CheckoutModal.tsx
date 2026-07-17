@@ -52,7 +52,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
   const [showRzpSimulator, setShowRzpSimulator] = useState<boolean>(false);
   const [activeRzpOrder, setActiveRzpOrder] = useState<any>(null);
   const [isRzpLoading, setIsRzpLoading] = useState<boolean>(false);
-  const [forceSandbox, setForceSandbox] = useState<boolean>(true);
+  const [forceSandbox, setForceSandbox] = useState(false);
 
   // Auto-detect Razorpay credentials on the server and disable sandbox if real credentials exist
   useEffect(() => {
@@ -163,13 +163,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, onClearCart,
         const configRes = await fetch('/api/razorpay/config');
         const config = await configRes.json();
 
-        if (forceSandbox || order.isMock || config.isMock) {
-          setProcessState('Launching Razorpay Sandbox payment panel...');
-          setTimeout(() => {
-            setShowRzpSimulator(true);
-          }, 800);
-          return;
-        }
+             
 
         const scriptLoaded = await loadRazorpayScript();
         if (!scriptLoaded) {
