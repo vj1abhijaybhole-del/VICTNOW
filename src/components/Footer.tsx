@@ -209,10 +209,10 @@ export default function Footer({ scrollToSection, onActivityClick }: FooterProps
               Follow us for more updates on Instagram, Facebook, and LinkedIn.
             </p>
             <div className="flex items-center space-x-3 pt-2">
-              <a href="https://instagram.com/victnow_Perfumes" target="_blank" rel="noopener noreferrer" className="p-2 bg-[#121418] border-2 border-white/10 hover:border-gold-500/50 text-neutral-200 hover:text-gold-300 transition-all font-bold" aria-label="Instagram">
+              <a href="https://www.instagram.com/victnow_" target="_blank" rel="noopener noreferrer" className="p-2 bg-[#121418] border-2 border-white/10 hover:border-gold-500/50 text-neutral-200 hover:text-gold-300 transition-all font-bold" aria-label="Instagram">
                 <Instagram className="w-4 h-4" />
               </a>
-              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="p-2 bg-[#121418] border-2 border-white/10 hover:border-gold-500/50 text-neutral-200 hover:text-gold-300 transition-all font-bold" aria-label="Facebook">
+              <a href="https://www.facebook.com/victnowPerfume" target="_blank" rel="noopener noreferrer" className="p-2 bg-[#121418] border-2 border-white/10 hover:border-gold-500/50 text-neutral-200 hover:text-gold-300 transition-all font-bold" aria-label="Facebook">
                 <Facebook className="w-4 h-4" />
               </a>
               <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="p-2 bg-[#121418] border-2 border-white/10 hover:border-gold-500/50 text-neutral-200 hover:text-gold-300 transition-all font-bold" aria-label="LinkedIn">
